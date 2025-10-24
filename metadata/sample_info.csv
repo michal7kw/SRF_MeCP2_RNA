@@ -1,0 +1,7 @@
+sample_id,condition,replicate,fastq_r1,fastq_r2
+G1,Control,1,DATA/90-1244168066/00_fastq/G1_R1_001.fastq.gz,DATA/90-1244168066/00_fastq/G1_R2_001.fastq.gz
+G2,Control,2,DATA/90-1244168066/00_fastq/G2_R1_001.fastq.gz,DATA/90-1244168066/00_fastq/G2_R2_001.fastq.gz
+G3,Control,3,DATA/90-1244168066/00_fastq/G3_R1_001.fastq.gz,DATA/90-1244168066/00_fastq/G3_R2_001.fastq.gz
+M1,Mutant,1,DATA/90-1244168066/00_fastq/M1_R1_001.fastq.gz,DATA/90-1244168066/00_fastq/M1_R2_001.fastq.gz
+M2,Mutant,2,DATA/90-1244168066/00_fastq/M2_R1_001.fastq.gz,DATA/90-1244168066/00_fastq/M2_R2_001.fastq.gz
+M3,Mutant,3,DATA/90-1244168066/00_fastq/M3_R1_001.fastq.gz,DATA/90-1244168066/00_fastq/M3_R2_001.fastq.gz

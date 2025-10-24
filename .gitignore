@@ -1,0 +1,15 @@
+*.gz
+*.md5
+*.md
+*.txt
+*.bam
+*.tab
+*.out
+*.err
+*.bai
+*.rds
+*.zip
+*.html
+*.parquet
+*.log
+*.json

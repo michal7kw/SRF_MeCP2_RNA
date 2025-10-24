@@ -1,0 +1,15 @@
+Status	results/alignment/G1_Aligned.sortedByCoord.out.bam	results/alignment/G2_Aligned.sortedByCoord.out.bam	results/alignment/G3_Aligned.sortedByCoord.out.bam	results/alignment/M1_Aligned.sortedByCoord.out.bam	results/alignment/M2_Aligned.sortedByCoord.out.bam	results/alignment/M3_Aligned.sortedByCoord.out.bam
+Assigned	82461628	64626319	66149157	61800891	68848973	58248484
+Unassigned_Unmapped	2017508	1759916	2715084	2737856	3040638	2254380
+Unassigned_Read_Type	0	0	0	0	0	0
+Unassigned_Singleton	0	0	0	0	0	0
+Unassigned_MappingQuality	0	0	0	0	0	0
+Unassigned_Chimera	0	0	0	0	0	0
+Unassigned_FragmentLength	0	0	0	0	0	0
+Unassigned_Duplicate	0	0	0	0	0	0
+Unassigned_MultiMapping	10101020	8421672	10045254	10037384	10655088	8768560
+Unassigned_Secondary	0	0	0	0	0	0
+Unassigned_NonSplit	0	0	0	0	0	0
+Unassigned_NoFeatures	10081568	7235305	9550766	8923670	8369038	7921491
+Unassigned_Overlapping_Length	0	0	0	0	0	0
+Unassigned_Ambiguity	9922888	7863672	7937131	7152815	8232965	6640159
