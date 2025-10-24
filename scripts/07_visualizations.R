@@ -90,14 +90,14 @@ cat("Generating sample distance heatmap...\n")
 sample_dists <- dist(t(assay(vsd)))
 sample_dist_matrix <- as.matrix(sample_dists)
 
-# Clean row and column names
-rownames(sample_dist_matrix) <- vsd$condition
-colnames(sample_dist_matrix) <- vsd$condition
+# Clean row and column names (use sample IDs, not condition names)
+rownames(sample_dist_matrix) <- colnames(vsd)
+colnames(sample_dist_matrix) <- colnames(vsd)
 
 # Create annotation
 annotation_col <- data.frame(
     Condition = vsd$condition,
-    row.names = colnames(sample_dist_matrix)
+    row.names = colnames(vsd)
 )
 
 # Color palette
@@ -264,10 +264,10 @@ top_genes_scaled <- t(scale(t(top_genes_vst)))
 # Clean row names (remove version numbers)
 rownames(top_genes_scaled) <- gsub("\\..*", "", rownames(top_genes_scaled))
 
-# Create annotation
+# Create annotation (use sample IDs, not condition names)
 annotation_col <- data.frame(
     Condition = vsd$condition,
-    row.names = colnames(top_genes_scaled)
+    row.names = colnames(vsd)
 )
 
 # Define colors
