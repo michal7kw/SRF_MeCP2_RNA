@@ -10,6 +10,7 @@ suppressPackageStartupMessages({
     library(RColorBrewer)
     library(ggrepel)
     library(viridis)
+    library(rtracklayer)
 })
 
 cat("==========================================\n")
@@ -20,6 +21,7 @@ cat("Start time:", as.character(Sys.time()), "\n\n")
 # Define paths
 deseq_dir <- "results/DESeq2"
 output_dir <- "results/plots"
+gtf_file <- "/beegfs/scratch/ric.sessa/kubacki.michal/COMMONS/genome/downloads_grch38_gencode_v44/gencode.v44.annotation.gtf"
 
 # Create output directory
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
@@ -38,7 +40,36 @@ metadata <- read.csv("metadata/sample_info.csv", row.names = 1)
 cat("Data loaded successfully\n\n")
 
 # ============================================================
-# 2. PCA Plot
+# 2. Create Gene ID to Symbol Mapping
+# ============================================================
+cat("Loading gene annotations and creating ID to symbol mapping...\n")
+
+# Read GTF file
+gtf <- import(gtf_file)
+gtf_df <- as.data.frame(gtf)
+
+# Extract gene_id and gene_name mapping (only for genes)
+gene_mapping <- gtf_df %>%
+    filter(type == "gene") %>%
+    select(gene_id, gene_name) %>%
+    distinct() %>%
+    mutate(gene_id = gsub("\\..*", "", gene_id))  # Remove version numbers
+
+# Create a named vector for easy lookup
+gene_id_to_symbol <- setNames(gene_mapping$gene_name, gene_mapping$gene_id)
+
+# Function to convert gene IDs to symbols
+convert_to_symbol <- function(gene_ids) {
+    gene_ids_clean <- gsub("\\..*", "", gene_ids)  # Remove version numbers
+    symbols <- gene_id_to_symbol[gene_ids_clean]
+    # If no symbol found, use the cleaned gene ID
+    ifelse(is.na(symbols), gene_ids_clean, symbols)
+}
+
+cat("  Created mapping for", length(gene_id_to_symbol), "genes\n\n")
+
+# ============================================================
+# 3. PCA Plot
 # ============================================================
 cat("Generating PCA plot...\n")
 
@@ -82,7 +113,7 @@ ggsave(
 cat("  Saved: PCA_plot.png and PCA_plot.pdf\n\n")
 
 # ============================================================
-# 3. Sample Distance Heatmap
+# 4. Sample Distance Heatmap
 # ============================================================
 cat("Generating sample distance heatmap...\n")
 
@@ -131,7 +162,7 @@ dev.off()
 cat("  Saved: sample_distance_heatmap.png and sample_distance_heatmap.pdf\n\n")
 
 # ============================================================
-# 4. Volcano Plot
+# 5. Volcano Plot
 # ============================================================
 cat("Generating volcano plot...\n")
 
@@ -192,7 +223,7 @@ ggsave(
 cat("  Saved: volcano_plot.png and volcano_plot.pdf\n\n")
 
 # ============================================================
-# 5. MA Plot
+# 6. MA Plot
 # ============================================================
 cat("Generating MA plot...\n")
 
@@ -243,7 +274,7 @@ ggsave(
 cat("  Saved: MA_plot.png and MA_plot.pdf\n\n")
 
 # ============================================================
-# 6. Heatmap of Top Differentially Expressed Genes
+# 7. Heatmap of Top Differentially Expressed Genes
 # ============================================================
 cat("Generating heatmap of top DEGs...\n")
 
@@ -261,8 +292,8 @@ top_genes_vst <- assay(vsd)[top_genes_list, ]
 # Scale by row (z-score)
 top_genes_scaled <- t(scale(t(top_genes_vst)))
 
-# Clean row names (remove version numbers)
-rownames(top_genes_scaled) <- gsub("\\..*", "", rownames(top_genes_scaled))
+# Convert row names to gene symbols
+rownames(top_genes_scaled) <- convert_to_symbol(rownames(top_genes_scaled))
 
 # Create annotation (use sample IDs, not condition names)
 annotation_col <- data.frame(
@@ -313,7 +344,7 @@ dev.off()
 cat("  Saved: heatmap_top50_DEGs.png and heatmap_top50_DEGs.pdf\n\n")
 
 # ============================================================
-# 7. P-value Distribution
+# 8. P-value Distribution
 # ============================================================
 cat("Generating p-value distribution plot...\n")
 
@@ -351,7 +382,7 @@ ggsave(
 cat("  Saved: pvalue_distribution.png and pvalue_distribution.pdf\n\n")
 
 # ============================================================
-# 8. Gene Expression Boxplots for Top Genes
+# 9. Gene Expression Boxplots for Top Genes
 # ============================================================
 cat("Generating boxplots for top 9 DEGs...\n")
 
@@ -375,7 +406,7 @@ boxplot_data <- norm_counts[top9_genes, ] %>%
         rownames_to_column(metadata, "sample"),
         by = "sample"
     ) %>%
-    mutate(gene = gsub("\\..*", "", gene))  # Remove version numbers
+    mutate(gene = convert_to_symbol(gene))  # Convert to gene symbols
 
 # Create boxplot
 boxplot_top9 <- ggplot(boxplot_data, aes(x = condition, y = log2(count + 1), fill = condition)) +
@@ -415,7 +446,7 @@ ggsave(
 cat("  Saved: boxplot_top9_DEGs.png and boxplot_top9_DEGs.pdf\n\n")
 
 # ============================================================
-# 9. Summary Statistics Plot
+# 10. Summary Statistics Plot
 # ============================================================
 cat("Generating summary statistics plot...\n")
 

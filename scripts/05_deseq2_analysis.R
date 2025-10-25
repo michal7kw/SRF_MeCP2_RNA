@@ -8,6 +8,7 @@ suppressPackageStartupMessages({
     library(tidyverse)
     library(pheatmap)
     library(RColorBrewer)
+    library(rtracklayer)
 })
 
 cat("==========================================\n")
@@ -19,6 +20,7 @@ cat("Start time:", as.character(Sys.time()), "\n\n")
 count_file <- "results/counts/gene_counts.txt"
 metadata_file <- "metadata/sample_info.csv"
 output_dir <- "results/DESeq2"
+gtf_file <- "/beegfs/scratch/ric.sessa/kubacki.michal/COMMONS/genome/downloads_grch38_gencode_v44/gencode.v44.annotation.gtf"
 
 # Create output directory
 dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
@@ -54,7 +56,29 @@ if (!all(rownames(metadata) == colnames(count_data))) {
 }
 
 # ============================================================
-# 2. Create DESeq2 object
+# 2. Load gene annotations and create ID to symbol mapping
+# ============================================================
+cat("Loading gene annotations and creating ID to symbol mapping...\n")
+
+# Read GTF file
+gtf <- import(gtf_file)
+gtf_df <- as.data.frame(gtf)
+
+# Extract gene_id and gene_name mapping (only for genes)
+gene_mapping <- gtf_df %>%
+    filter(type == "gene") %>%
+    select(gene_id, gene_name, gene_type) %>%
+    distinct() %>%
+    mutate(gene_id = gsub("\\..*", "", gene_id))  # Remove version numbers
+
+# Create a named vector for easy lookup
+gene_id_to_symbol <- setNames(gene_mapping$gene_name, gene_mapping$gene_id)
+gene_id_to_type <- setNames(gene_mapping$gene_type, gene_mapping$gene_id)
+
+cat("  Created mapping for", length(gene_id_to_symbol), "genes\n\n")
+
+# ============================================================
+# 3. Create DESeq2 object
 # ============================================================
 cat("Creating DESeq2 dataset...\n")
 dds <- DESeqDataSetFromMatrix(
@@ -70,7 +94,7 @@ dds <- dds[keep, ]
 cat("Retained", sum(keep), "genes after filtering\n\n")
 
 # ============================================================
-# 3. Run DESeq2 analysis
+# 4. Run DESeq2 analysis
 # ============================================================
 cat("Running DESeq2 differential expression analysis...\n")
 dds <- DESeq(dds)
@@ -98,37 +122,60 @@ cat("  - Upregulated in Mutant:", sig_up, "\n")
 cat("  - Downregulated in Mutant:", sig_down, "\n\n")
 
 # ============================================================
-# 4. Save results
+# 5. Save results with gene symbols
 # ============================================================
 cat("Saving results...\n")
 
-# Save all results
+# Function to add gene annotations to results
+add_gene_annotations <- function(results_df) {
+    # Extract gene IDs without version numbers
+    gene_ids_clean <- gsub("\\..*", "", rownames(results_df))
+
+    # Add gene symbols and types
+    results_df$gene_id <- rownames(results_df)
+    results_df$gene_symbol <- gene_id_to_symbol[gene_ids_clean]
+    results_df$gene_type <- gene_id_to_type[gene_ids_clean]
+
+    # If no symbol found, use the gene_id
+    results_df$gene_symbol[is.na(results_df$gene_symbol)] <- gene_ids_clean[is.na(results_df$gene_symbol)]
+
+    # Reorder columns to put annotations first
+    results_df <- results_df %>%
+        select(gene_id, gene_symbol, gene_type, everything())
+
+    return(results_df)
+}
+
+# Save all results with annotations
+res_all_annotated <- add_gene_annotations(as.data.frame(res_ordered))
 write.csv(
-    as.data.frame(res_ordered),
+    res_all_annotated,
     file = file.path(output_dir, "DESeq2_results_all.csv"),
-    row.names = TRUE
+    row.names = FALSE
 )
 
 # Save significant genes only (padj < 0.05)
 res_sig <- subset(res_ordered, padj < 0.05)
+res_sig_annotated <- add_gene_annotations(as.data.frame(res_sig))
 write.csv(
-    as.data.frame(res_sig),
+    res_sig_annotated,
     file = file.path(output_dir, "DESeq2_results_significant.csv"),
-    row.names = TRUE
+    row.names = FALSE
 )
 
 # Save significant genes with stricter criteria (padj < 0.05 and |log2FC| > 1)
 res_sig_strict <- subset(res_ordered, padj < 0.05 & abs(log2FoldChange) > 1)
+res_sig_strict_annotated <- add_gene_annotations(as.data.frame(res_sig_strict))
 write.csv(
-    as.data.frame(res_sig_strict),
+    res_sig_strict_annotated,
     file = file.path(output_dir, "DESeq2_results_significant_FC2.csv"),
-    row.names = TRUE
+    row.names = FALSE
 )
 
 cat("Significant genes (padj < 0.05, |log2FC| > 1):", nrow(res_sig_strict), "\n")
 
 # ============================================================
-# 5. Normalized counts
+# 6. Normalized counts
 # ============================================================
 cat("\nExtracting normalized counts...\n")
 normalized_counts <- counts(dds, normalized = TRUE)
@@ -139,7 +186,7 @@ write.csv(
 )
 
 # ============================================================
-# 6. Variance stabilized transformation for visualization
+# 7. Variance stabilized transformation for visualization
 # ============================================================
 cat("Performing variance stabilizing transformation...\n")
 vsd <- vst(dds, blind = FALSE)
