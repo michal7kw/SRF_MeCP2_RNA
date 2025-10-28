@@ -223,6 +223,125 @@ ggsave(
 cat("  Saved: volcano_plot.png and volcano_plot.pdf\n\n")
 
 # ============================================================
+# 5b. Additional Volcano Plots with Different Thresholds
+# ============================================================
+cat("Generating additional volcano plots with different thresholds...\n")
+
+# Volcano plot with 50 reads threshold and FC > 0.5 (log2FC > 0.585)
+cat("  Creating volcano plot: baseMean >= 50, FC > 0.5...\n")
+volcano_data_50reads_fc05 <- as.data.frame(res) %>%
+    filter(baseMean >= 50) %>%
+    mutate(
+        gene = rownames(.),
+        significant = case_when(
+            padj < 0.05 & log2FoldChange > log2(1.5) ~ "Upregulated",
+            padj < 0.05 & log2FoldChange < -log2(1.5) ~ "Downregulated",
+            TRUE ~ "Not significant"
+        )
+    ) %>%
+    filter(!is.na(padj), !is.na(log2FoldChange))
+
+# Count significant genes
+n_up_fc05 <- sum(volcano_data_50reads_fc05$significant == "Upregulated")
+n_down_fc05 <- sum(volcano_data_50reads_fc05$significant == "Downregulated")
+
+volcano_plot_50reads_fc05 <- ggplot(volcano_data_50reads_fc05,
+                                     aes(x = log2FoldChange, y = -log10(padj), color = significant)) +
+    geom_point(alpha = 0.6, size = 1.5) +
+    geom_vline(xintercept = c(-log2(1.5), log2(1.5)), linetype = "dashed", color = "gray40") +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "gray40") +
+    scale_color_manual(
+        values = c("Upregulated" = "#e74c3c", "Downregulated" = "#3498db", "Not significant" = "gray70"),
+        name = "Expression"
+    ) +
+    labs(
+        title = sprintf("Volcano Plot - Mutant vs Control\n(baseMean >= 50, FC > 0.5, padj < 0.05)\nUp: %d | Down: %d",
+                        n_up_fc05, n_down_fc05),
+        x = "log2 Fold Change",
+        y = "-log10 (Adjusted P-value)"
+    ) +
+    theme_bw(base_size = 14) +
+    theme(
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 12),
+        legend.position = "bottom",
+        panel.grid.minor = element_blank()
+    )
+
+ggsave(
+    file.path(output_dir, "volcano_plot_50reads_FC05.png"),
+    volcano_plot_50reads_fc05,
+    width = 12,
+    height = 10,
+    dpi = 300
+)
+
+ggsave(
+    file.path(output_dir, "volcano_plot_50reads_FC05.pdf"),
+    volcano_plot_50reads_fc05,
+    width = 12,
+    height = 10
+)
+
+cat("    Saved: volcano_plot_50reads_FC05.png and volcano_plot_50reads_FC05.pdf\n")
+
+# Volcano plot with 50 reads threshold and FC > 1 (log2FC > 1)
+cat("  Creating volcano plot: baseMean >= 50, FC > 1...\n")
+volcano_data_50reads_fc1 <- as.data.frame(res) %>%
+    filter(baseMean >= 50) %>%
+    mutate(
+        gene = rownames(.),
+        significant = case_when(
+            padj < 0.05 & log2FoldChange > 1 ~ "Upregulated",
+            padj < 0.05 & log2FoldChange < -1 ~ "Downregulated",
+            TRUE ~ "Not significant"
+        )
+    ) %>%
+    filter(!is.na(padj), !is.na(log2FoldChange))
+
+# Count significant genes
+n_up_fc1 <- sum(volcano_data_50reads_fc1$significant == "Upregulated")
+n_down_fc1 <- sum(volcano_data_50reads_fc1$significant == "Downregulated")
+
+volcano_plot_50reads_fc1 <- ggplot(volcano_data_50reads_fc1,
+                                    aes(x = log2FoldChange, y = -log10(padj), color = significant)) +
+    geom_point(alpha = 0.6, size = 1.5) +
+    geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "gray40") +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "gray40") +
+    scale_color_manual(
+        values = c("Upregulated" = "#e74c3c", "Downregulated" = "#3498db", "Not significant" = "gray70"),
+        name = "Expression"
+    ) +
+    labs(
+        title = sprintf("Volcano Plot - Mutant vs Control\n(baseMean >= 50, FC > 1, padj < 0.05)\nUp: %d | Down: %d",
+                        n_up_fc1, n_down_fc1),
+        x = "log2 Fold Change",
+        y = "-log10 (Adjusted P-value)"
+    ) +
+    theme_bw(base_size = 14) +
+    theme(
+        plot.title = element_text(hjust = 0.5, face = "bold", size = 12),
+        legend.position = "bottom",
+        panel.grid.minor = element_blank()
+    )
+
+ggsave(
+    file.path(output_dir, "volcano_plot_50reads_FC1.png"),
+    volcano_plot_50reads_fc1,
+    width = 12,
+    height = 10,
+    dpi = 300
+)
+
+ggsave(
+    file.path(output_dir, "volcano_plot_50reads_FC1.pdf"),
+    volcano_plot_50reads_fc1,
+    width = 12,
+    height = 10
+)
+
+cat("    Saved: volcano_plot_50reads_FC1.png and volcano_plot_50reads_FC1.pdf\n\n")
+
+# ============================================================
 # 6. MA Plot
 # ============================================================
 cat("Generating MA plot...\n")
@@ -500,7 +619,9 @@ cat("Output files saved to:", output_dir, "\n")
 cat("\nGenerated plots:\n")
 cat("  - PCA_plot: Principal Component Analysis\n")
 cat("  - sample_distance_heatmap: Sample clustering\n")
-cat("  - volcano_plot: Differential expression volcano plot\n")
+cat("  - volcano_plot: Differential expression volcano plot (original)\n")
+cat("  - volcano_plot_50reads_FC05: Volcano plot (baseMean >= 50, FC > 0.5)\n")
+cat("  - volcano_plot_50reads_FC1: Volcano plot (baseMean >= 50, FC > 1)\n")
 cat("  - MA_plot: Mean vs log2FC plot\n")
 cat("  - heatmap_top50_DEGs: Heatmap of top 50 genes\n")
 cat("  - boxplot_top9_DEGs: Expression boxplots for top 9 genes\n")
