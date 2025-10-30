@@ -14,3 +14,4 @@
 *.log
 *.json
 results/GO_KEGG/comparative_plots/*_simplified*
+**/Archive

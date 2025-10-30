@@ -254,22 +254,31 @@ create_venn_diagram <- function(gene_list1, gene_list2,
     venn_list <- list(gene_list1, gene_list2)
     names(venn_list) <- c(label1, label2)
 
-    # Create Venn diagram with ggVennDiagram
+    # Create Venn diagram with ggVennDiagram (without set labels)
     venn_plot <- ggVennDiagram(
         venn_list,
         label = "count",
         label_alpha = 0,
         label_size = 5,
-        edge_size = 1.5
+        edge_size = 1.5,
+        set_size = 0  # Hide default set labels
     ) +
         scale_fill_gradient(low = "#F4FAFE", high = "#4981BF") +
         scale_color_manual(values = c("#E74C3C", "#3498DB")) +
+        scale_x_continuous(expand = expansion(mult = 0.2)) +
+        scale_y_continuous(expand = expansion(mult = 0.35)) +
+        # Add set labels above and below - outside the circles
+        annotate("text", x = 0, y = 10, label = label1,
+                 size = 5, fontface = "bold", color = "#E74C3C") +
+        annotate("text", x = 0, y = -8, label = label2,
+                 size = 5, fontface = "bold", color = "#3498DB") +
         labs(title = title) +
         theme(
-            plot.title = element_text(hjust = 0.5, size = 16, face = "bold", margin = margin(b = 20)),
-            plot.margin = margin(t = 20, r = 20, b = 80, l = 20),
+            plot.title = element_text(hjust = 0.5, size = 16, face = "bold", margin = margin(b = 2)),
+            plot.margin = margin(t = 2, r = 20, b = 2, l = 20),
             legend.position = "none"
-        )
+        ) +
+        coord_fixed(clip = "off")
 
     # Create statistics table
     stats_df <- data.frame(
@@ -314,7 +323,7 @@ create_venn_diagram <- function(gene_list1, gene_list2,
         venn_plot,
         stats_table,
         ncol = 1,
-        heights = c(0.7, 0.3)
+        heights = c(0.65, 0.35)
     )
 
     # Save PNG
@@ -322,7 +331,7 @@ create_venn_diagram <- function(gene_list1, gene_list2,
         output_file,
         plot = combined_plot,
         width = 10,
-        height = 12,
+        height = 10,
         dpi = 300,
         bg = "white"
     )
@@ -334,7 +343,7 @@ create_venn_diagram <- function(gene_list1, gene_list2,
         pdf_file,
         plot = combined_plot,
         width = 10,
-        height = 12,
+        height = 10,
         bg = "white"
     )
     cat("  Saved PDF:", pdf_file, "\n")
