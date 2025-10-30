@@ -45,8 +45,14 @@ prepare_comparative_data <- function(up_file, down_file, type = "GO") {
             mutate(
                 Direction = "UP",
                 Term = Description
-            ) %>%
-            select(Term, Count, p.adjust, Direction, ONTOLOGY)
+            )
+
+        # Select columns - check if ONTOLOGY exists
+        if ("ONTOLOGY" %in% colnames(up_data)) {
+            up_data <- up_data %>% select(Term, Count, p.adjust, Direction, ONTOLOGY)
+        } else {
+            up_data <- up_data %>% select(Term, Count, p.adjust, Direction)
+        }
 
         cat("  - Loaded", nrow(up_data), "upregulated terms\n")
         combined_data <- bind_rows(combined_data, up_data)
@@ -61,8 +67,14 @@ prepare_comparative_data <- function(up_file, down_file, type = "GO") {
             mutate(
                 Direction = "Down",
                 Term = Description
-            ) %>%
-            select(Term, Count, p.adjust, Direction, ONTOLOGY)
+            )
+
+        # Select columns - check if ONTOLOGY exists
+        if ("ONTOLOGY" %in% colnames(down_data)) {
+            down_data <- down_data %>% select(Term, Count, p.adjust, Direction, ONTOLOGY)
+        } else {
+            down_data <- down_data %>% select(Term, Count, p.adjust, Direction)
+        }
 
         cat("  - Loaded", nrow(down_data), "downregulated terms\n")
         combined_data <- bind_rows(combined_data, down_data)
@@ -111,28 +123,44 @@ create_comparative_dotplot <- function(data, title, output_file, show_ontology =
     data$Direction <- factor(data$Direction, levels = c("UP", "Down"))
 
     # Add ontology labels if available and requested
-    if (show_ontology && "ONTOLOGY" %in% colnames(data)) {
+    if (show_ontology && "ONTOLOGY" %in% colnames(data) && any(!is.na(data$ONTOLOGY))) {
         # Get ontology for each term (take first non-NA value)
         term_ontology <- data %>%
             filter(!is.na(ONTOLOGY)) %>%
             group_by(Term) %>%
             summarize(ont = first(ONTOLOGY), .groups = "drop")
 
-        # Add abbreviated ontology to term labels
-        data <- data %>%
-            left_join(term_ontology, by = "Term") %>%
-            mutate(Term_label = if_else(!is.na(ont), paste0(Term, " (", ont, ")"), as.character(Term)))
+        # Only add ontology labels if we found any
+        if (nrow(term_ontology) > 0) {
+            # Add abbreviated ontology to term labels
+            data <- data %>%
+                left_join(term_ontology, by = "Term") %>%
+                mutate(Term_display = if_else(!is.na(ont), paste0(Term, " (", ont, ")"), as.character(Term)))
 
-        data$Term_label <- factor(data$Term_label,
-                                   levels = rev(paste0(term_order, " (",
-                                                      term_ontology$ont[match(term_order, term_ontology$Term)], ")")))
-        y_var <- "Term_label"
+            # Update data_present with the new column
+            data_present <- data %>% filter(!is.na(p.adjust))
+
+            data_present$Term_display <- factor(data_present$Term_display,
+                                       levels = rev(paste0(term_order, " (",
+                                                          term_ontology$ont[match(term_order, term_ontology$Term)], ")")))
+            y_var <- "Term_display"
+        } else {
+            # No ontology data, use regular terms
+            data$Term_display <- data$Term
+            data_present <- data %>% filter(!is.na(p.adjust))
+            data_present$Term_display <- data_present$Term
+            y_var <- "Term_display"
+        }
     } else {
-        y_var <- "Term"
+        # No ontology column or all NA, use regular terms
+        data$Term_display <- data$Term
+        data_present <- data %>% filter(!is.na(p.adjust))
+        data_present$Term_display <- data_present$Term
+        y_var <- "Term_display"
     }
 
     # Create the plot
-    p <- ggplot(data_present, aes_string(x = "Direction", y = y_var)) +
+    p <- ggplot(data_present, aes(x = Direction, y = .data[[y_var]])) +
         geom_point(aes(size = Count, color = p.adjust), alpha = 0.8) +
         scale_color_gradient(
             low = "blue",
@@ -202,18 +230,21 @@ create_simplified_comparative_plot <- function(data, title, output_file,
         data$Term_display <- data$Term
     }
 
+    # Update data_present with Term_display column
+    data_present <- data %>% filter(!is.na(p.adjust))
+
     # Order terms by their best (lowest) p-value
-    term_order <- data %>%
+    term_order <- data_present %>%
         group_by(Term_display) %>%
         summarize(best_pval = min(p.adjust, na.rm = TRUE), .groups = "drop") %>%
         arrange(desc(best_pval)) %>%  # Reverse order for plotting
         pull(Term_display)
 
-    data$Term_display <- factor(data$Term_display, levels = term_order)
-    data$Direction <- factor(data$Direction, levels = c("UP", "Down"))
+    data_present$Term_display <- factor(data_present$Term_display, levels = term_order)
+    data_present$Direction <- factor(data_present$Direction, levels = c("UP", "Down"))
 
     # Create the plot with styling similar to the example image
-    p <- ggplot(data, aes(x = Direction, y = Term_display)) +
+    p <- ggplot(data_present, aes(x = Direction, y = Term_display)) +
         geom_point(aes(size = Count, color = p.adjust), alpha = 0.8) +
         scale_color_gradient(
             low = "#4575b4",      # Blue for significant
