@@ -1,8 +1,8 @@
 #!/usr/bin/env Rscript
 
-# RNA-seq Pipeline Step 6b: Comparative Enrichment Plots
+# RNA-seq Pipeline Step 6b: Comparative Enrichment Plots - NPCs vs Neurons
 # This script creates comparative dot plots showing GO/KEGG enrichment
-# for upregulated and downregulated genes side by side
+# for both NPCs and Neurons (Ns) with upregulated and downregulated genes
 
 suppressPackageStartupMessages({
     library(tidyverse)
@@ -15,7 +15,14 @@ cat("==========================================\n")
 cat("Start time:", as.character(Sys.time()), "\n\n")
 
 # Define paths
-input_dir <- "results/GO_KEGG"
+# NPCs (current analysis)
+npc_input_dir <- "results/GO_KEGG"
+
+# Neurons (from old analysis)
+neuron_base_dir <- "/beegfs/scratch/ric.broccoli/kubacki.michal/SRF_MeCP2_top/SRF_MeCP2_rna_old/results"
+neuron_deg_dir <- file.path(neuron_base_dir, "05_deseq2")
+neuron_go_dir <- file.path(neuron_base_dir, "go_analysis_neu")
+
 output_dir <- "results/GO_KEGG/comparative_plots"
 
 # Create output directory
@@ -27,82 +34,137 @@ min_count <- 5     # Minimum gene count to include a term
 max_pval <- 0.05   # Maximum adjusted p-value to include
 
 # ============================================================
-# Function to prepare data for comparative plotting
+# Function to prepare combined data for NPCs and Neurons plotting
 # ============================================================
-prepare_comparative_data <- function(up_file, down_file, type = "GO") {
+prepare_combined_celltype_data <- function(npc_up_file, npc_down_file,
+                                           neuron_up_file, neuron_down_file,
+                                           type = "GO") {
 
-    cat("Processing", type, "enrichment results...\n")
+    cat("Processing", type, "enrichment results for NPCs and Neurons...\n")
 
     # Initialize empty data frame
     combined_data <- data.frame()
 
-    # Load upregulated results
-    if (file.exists(up_file)) {
-        up_data <- read.csv(up_file) %>%
+    # Load NPC upregulated results
+    if (file.exists(npc_up_file)) {
+        npc_up_data <- read.csv(npc_up_file) %>%
             filter(Count >= min_count, p.adjust <= max_pval) %>%
             arrange(p.adjust) %>%
             head(top_n_terms) %>%
             mutate(
+                CellType = "NPCs",
                 Direction = "UP",
                 Term = Description
             )
 
         # Select columns - check if ONTOLOGY exists
-        if ("ONTOLOGY" %in% colnames(up_data)) {
-            up_data <- up_data %>% select(Term, Count, p.adjust, Direction, ONTOLOGY)
+        if ("ONTOLOGY" %in% colnames(npc_up_data)) {
+            npc_up_data <- npc_up_data %>% select(Term, Count, p.adjust, CellType, Direction, ONTOLOGY)
         } else {
-            up_data <- up_data %>% select(Term, Count, p.adjust, Direction)
+            npc_up_data <- npc_up_data %>% select(Term, Count, p.adjust, CellType, Direction)
         }
 
-        cat("  - Loaded", nrow(up_data), "upregulated terms\n")
-        combined_data <- bind_rows(combined_data, up_data)
+        cat("  - Loaded", nrow(npc_up_data), "NPC upregulated terms\n")
+        combined_data <- bind_rows(combined_data, npc_up_data)
     }
 
-    # Load downregulated results
-    if (file.exists(down_file)) {
-        down_data <- read.csv(down_file) %>%
+    # Load NPC downregulated results
+    if (file.exists(npc_down_file)) {
+        npc_down_data <- read.csv(npc_down_file) %>%
             filter(Count >= min_count, p.adjust <= max_pval) %>%
             arrange(p.adjust) %>%
             head(top_n_terms) %>%
             mutate(
+                CellType = "NPCs",
                 Direction = "Down",
                 Term = Description
             )
 
         # Select columns - check if ONTOLOGY exists
-        if ("ONTOLOGY" %in% colnames(down_data)) {
-            down_data <- down_data %>% select(Term, Count, p.adjust, Direction, ONTOLOGY)
+        if ("ONTOLOGY" %in% colnames(npc_down_data)) {
+            npc_down_data <- npc_down_data %>% select(Term, Count, p.adjust, CellType, Direction, ONTOLOGY)
         } else {
-            down_data <- down_data %>% select(Term, Count, p.adjust, Direction)
+            npc_down_data <- npc_down_data %>% select(Term, Count, p.adjust, CellType, Direction)
         }
 
-        cat("  - Loaded", nrow(down_data), "downregulated terms\n")
-        combined_data <- bind_rows(combined_data, down_data)
+        cat("  - Loaded", nrow(npc_down_data), "NPC downregulated terms\n")
+        combined_data <- bind_rows(combined_data, npc_down_data)
     }
 
-    # Get unique terms from both directions
+    # Load Neuron upregulated results
+    if (file.exists(neuron_up_file)) {
+        neuron_up_data <- read.csv(neuron_up_file) %>%
+            filter(Count >= min_count, p.adjust <= max_pval) %>%
+            arrange(p.adjust) %>%
+            head(top_n_terms) %>%
+            mutate(
+                CellType = "Ns",
+                Direction = "UP",
+                Term = Description
+            )
+
+        # Select columns - check if ONTOLOGY exists
+        if ("ONTOLOGY" %in% colnames(neuron_up_data)) {
+            neuron_up_data <- neuron_up_data %>% select(Term, Count, p.adjust, CellType, Direction, ONTOLOGY)
+        } else {
+            neuron_up_data <- neuron_up_data %>% select(Term, Count, p.adjust, CellType, Direction)
+        }
+
+        cat("  - Loaded", nrow(neuron_up_data), "Neuron upregulated terms\n")
+        combined_data <- bind_rows(combined_data, neuron_up_data)
+    }
+
+    # Load Neuron downregulated results
+    if (file.exists(neuron_down_file)) {
+        neuron_down_data <- read.csv(neuron_down_file) %>%
+            filter(Count >= min_count, p.adjust <= max_pval) %>%
+            arrange(p.adjust) %>%
+            head(top_n_terms) %>%
+            mutate(
+                CellType = "Ns",
+                Direction = "Down",
+                Term = Description
+            )
+
+        # Select columns - check if ONTOLOGY exists
+        if ("ONTOLOGY" %in% colnames(neuron_down_data)) {
+            neuron_down_data <- neuron_down_data %>% select(Term, Count, p.adjust, CellType, Direction, ONTOLOGY)
+        } else {
+            neuron_down_data <- neuron_down_data %>% select(Term, Count, p.adjust, CellType, Direction)
+        }
+
+        cat("  - Loaded", nrow(neuron_down_data), "Neuron downregulated terms\n")
+        combined_data <- bind_rows(combined_data, neuron_down_data)
+    }
+
+    # Get unique terms from all conditions
     unique_terms <- unique(combined_data$Term)
     cat("  - Total unique terms:", length(unique_terms), "\n")
 
     # Create a complete data frame with all combinations
-    # This ensures we have entries for terms that appear in only one direction
+    # This ensures we have entries for terms that appear in only some conditions
     all_combinations <- expand.grid(
         Term = unique_terms,
+        CellType = c("NPCs", "Ns"),
         Direction = c("UP", "Down"),
         stringsAsFactors = FALSE
     )
 
     # Merge with actual data
     plot_data <- all_combinations %>%
-        left_join(combined_data, by = c("Term", "Direction"))
+        left_join(combined_data, by = c("Term", "CellType", "Direction"))
+
+    # Create combined column for plotting (NPCs UP, NPCs Down, Ns UP, Ns Down)
+    plot_data <- plot_data %>%
+        mutate(Condition = paste(CellType, Direction, sep = " "))
 
     return(plot_data)
 }
 
 # ============================================================
-# Function to create comparative dot plot
+# Function to create combined NPCs and Neurons comparative dot plot
 # ============================================================
-create_comparative_dotplot <- function(data, title, output_file, show_ontology = TRUE) {
+create_combined_dotplot <- function(data, title, output_file) {
 
     # Filter out rows with no data (NA p-values)
     data_present <- data %>% filter(!is.na(p.adjust))
@@ -112,7 +174,7 @@ create_comparative_dotplot <- function(data, title, output_file, show_ontology =
         return(NULL)
     }
 
-    # Order terms by their best (lowest) p-value across all directions
+    # Order terms by their best (lowest) p-value across all conditions
     term_order <- data %>%
         group_by(Term) %>%
         summarize(best_pval = min(p.adjust, na.rm = TRUE), .groups = "drop") %>%
@@ -120,149 +182,42 @@ create_comparative_dotplot <- function(data, title, output_file, show_ontology =
         pull(Term)
 
     data$Term <- factor(data$Term, levels = rev(term_order))
-    data$Direction <- factor(data$Direction, levels = c("UP", "Down"))
 
-    # Add ontology labels if available and requested
-    if (show_ontology && "ONTOLOGY" %in% colnames(data) && any(!is.na(data$ONTOLOGY))) {
-        # Get ontology for each term (take first non-NA value)
-        term_ontology <- data %>%
-            filter(!is.na(ONTOLOGY)) %>%
-            group_by(Term) %>%
-            summarize(ont = first(ONTOLOGY), .groups = "drop")
+    # Set factor levels for Condition to control column order: NPCs UP, NPCs Down, Ns UP, Ns Down
+    data$Condition <- factor(data$Condition, levels = c("NPCs UP", "NPCs Down", "Ns UP", "Ns Down"))
+    data_present$Condition <- factor(data_present$Condition, levels = c("NPCs UP", "NPCs Down", "Ns UP", "Ns Down"))
 
-        # Only add ontology labels if we found any
-        if (nrow(term_ontology) > 0) {
-            # Add abbreviated ontology to term labels
-            data <- data %>%
-                left_join(term_ontology, by = "Term") %>%
-                mutate(Term_display = if_else(!is.na(ont), paste0(Term, " (", ont, ")"), as.character(Term)))
+    # Simplify term names by removing prefixes like "GO:"
+    data$Term_display <- gsub("^GO:\\d+\\s*", "", data$Term)
+    data_present$Term_display <- gsub("^GO:\\d+\\s*", "", data_present$Term)
 
-            # Update data_present with the new column
-            data_present <- data %>% filter(!is.na(p.adjust))
+    # Update term factor levels
+    term_order_display <- gsub("^GO:\\d+\\s*", "", term_order)
+    data$Term_display <- factor(data$Term_display, levels = rev(term_order_display))
+    data_present$Term_display <- factor(data_present$Term_display, levels = rev(term_order_display))
 
-            data_present$Term_display <- factor(data_present$Term_display,
-                                       levels = rev(paste0(term_order, " (",
-                                                          term_ontology$ont[match(term_order, term_ontology$Term)], ")")))
-            y_var <- "Term_display"
-        } else {
-            # No ontology data, use regular terms
-            data$Term_display <- data$Term
-            data_present <- data %>% filter(!is.na(p.adjust))
-            data_present$Term_display <- data_present$Term
-            y_var <- "Term_display"
-        }
-    } else {
-        # No ontology column or all NA, use regular terms
-        data$Term_display <- data$Term
-        data_present <- data %>% filter(!is.na(p.adjust))
-        data_present$Term_display <- data_present$Term
-        y_var <- "Term_display"
-    }
-
-    # Create the plot
-    p <- ggplot(data_present, aes(x = Direction, y = .data[[y_var]])) +
+    # Create the plot with facets for cell types
+    p <- ggplot(data_present, aes(x = Condition, y = Term_display)) +
         geom_point(aes(size = Count, color = p.adjust), alpha = 0.8) +
         scale_color_gradient(
-            low = "blue",
-            high = "red",
+            low = "#4575b4",      # Blue for more significant
+            high = "#d73027",     # Red for less significant
             name = "Adjusted p-value",
             trans = "log10",
-            breaks = c(1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2),
-            labels = c("1e-7", "1e-6", "1e-5", "1e-4", "1e-3", "1e-2"),
-            limits = c(1e-7, max(data_present$p.adjust, na.rm = TRUE))
+            breaks = c(1e-7, 1e-6, 1e-5, 1e-4),
+            labels = c("1e-7", "1e-6", "1e-5", "1e-4")
         ) +
         scale_size_continuous(
             name = "Count",
             breaks = c(10, 25, 50, 100),
-            range = c(2, 10)
-        ) +
-        theme_bw(base_size = 12) +
-        theme(
-            axis.text.y = element_text(size = 10),
-            axis.text.x = element_text(size = 11, face = "bold"),
-            axis.title = element_blank(),
-            panel.grid.major = element_line(colour = "grey90"),
-            panel.grid.minor = element_blank(),
-            plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
-            legend.position = "right"
-        ) +
-        labs(title = title)
-
-    # Save plot
-    ggsave(output_file, p, width = 12, height = max(8, nrow(data_present) * 0.3), dpi = 300)
-
-    # Also save PDF
-    pdf_file <- sub("\\.png$", ".pdf", output_file)
-    ggsave(pdf_file, p, width = 12, height = max(8, nrow(data_present) * 0.3))
-
-    cat("  Saved:", output_file, "\n")
-    cat("  Saved:", pdf_file, "\n")
-
-    return(p)
-}
-
-# ============================================================
-# Function to create simplified comparative plot (like the example image)
-# ============================================================
-create_simplified_comparative_plot <- function(data, title, output_file,
-                                               selected_terms = NULL,
-                                               term_labels = NULL) {
-
-    # If specific terms are provided, filter to those
-    if (!is.null(selected_terms)) {
-        data <- data %>% filter(Term %in% selected_terms)
-    }
-
-    # Filter out rows with no data
-    data_present <- data %>% filter(!is.na(p.adjust))
-
-    if (nrow(data_present) == 0) {
-        cat("  No data to plot for", title, "\n")
-        return(NULL)
-    }
-
-    # Apply custom term labels if provided
-    if (!is.null(term_labels)) {
-        data <- data %>%
-            mutate(Term_display = term_labels[match(Term, names(term_labels))])
-        data$Term_display[is.na(data$Term_display)] <- data$Term[is.na(data$Term_display)]
-    } else {
-        data$Term_display <- data$Term
-    }
-
-    # Update data_present with Term_display column
-    data_present <- data %>% filter(!is.na(p.adjust))
-
-    # Order terms by their best (lowest) p-value
-    term_order <- data_present %>%
-        group_by(Term_display) %>%
-        summarize(best_pval = min(p.adjust, na.rm = TRUE), .groups = "drop") %>%
-        arrange(desc(best_pval)) %>%  # Reverse order for plotting
-        pull(Term_display)
-
-    data_present$Term_display <- factor(data_present$Term_display, levels = term_order)
-    data_present$Direction <- factor(data_present$Direction, levels = c("UP", "Down"))
-
-    # Create the plot with styling similar to the example image
-    p <- ggplot(data_present, aes(x = Direction, y = Term_display)) +
-        geom_point(aes(size = Count, color = p.adjust), alpha = 0.8) +
-        scale_color_gradient(
-            low = "#4575b4",      # Blue for significant
-            high = "#d73027",     # Red for less significant
-            name = "Adjusted p-value",
-            trans = "log10"
-        ) +
-        scale_size_continuous(
-            name = "Count",
             range = c(3, 12)
         ) +
         theme_bw(base_size = 12) +
         theme(
-            axis.text.y = element_text(size = 11, color = "black"),
-            axis.text.x = element_text(size = 12, face = "bold", color = "black"),
+            axis.text.y = element_text(size = 10, color = "black"),
+            axis.text.x = element_text(size = 11, face = "bold", color = "black", angle = 0),
             axis.title = element_blank(),
-            panel.grid.major.x = element_line(colour = "grey85"),
-            panel.grid.major.y = element_line(colour = "grey85"),
+            panel.grid.major = element_line(colour = "grey90"),
             panel.grid.minor = element_blank(),
             plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
             legend.position = "bottom",
@@ -271,12 +226,17 @@ create_simplified_comparative_plot <- function(data, title, output_file,
         ) +
         labs(title = title)
 
+    # Calculate plot dimensions
+    n_terms <- length(unique(data_present$Term_display))
+    plot_height <- max(8, n_terms * 0.35)
+    plot_width <- 10
+
     # Save plot
-    ggsave(output_file, p, width = 8, height = max(6, length(unique(data$Term_display)) * 0.4), dpi = 300)
+    ggsave(output_file, p, width = plot_width, height = plot_height, dpi = 300)
 
     # Also save PDF
     pdf_file <- sub("\\.png$", ".pdf", output_file)
-    ggsave(pdf_file, p, width = 8, height = max(6, length(unique(data$Term_display)) * 0.4))
+    ggsave(pdf_file, p, width = plot_width, height = plot_height)
 
     cat("  Saved:", output_file, "\n")
     cat("  Saved:", pdf_file, "\n")
@@ -285,159 +245,204 @@ create_simplified_comparative_plot <- function(data, title, output_file,
 }
 
 # ============================================================
-# Process GO enrichment
+# Process GO enrichment for NPCs and Neurons
 # ============================================================
 cat("\n============================================================\n")
 cat("Processing GO Enrichment Results\n")
 cat("============================================================\n")
 
-go_up_file <- file.path(input_dir, "GO_enrichment_upregulated.csv")
-go_down_file <- file.path(input_dir, "GO_enrichment_downregulated.csv")
+# NPC GO enrichment files (current analysis)
+npc_go_up_file <- file.path(npc_input_dir, "GO_enrichment_upregulated.csv")
+npc_go_down_file <- file.path(npc_input_dir, "GO_enrichment_downregulated.csv")
 
-if (file.exists(go_up_file) || file.exists(go_down_file)) {
-    go_data <- prepare_comparative_data(go_up_file, go_down_file, type = "GO")
+# Check if we need to create Neuron GO enrichment files
+# First, check if they already exist in the neuron GO directory
+neuron_go_up_file <- file.path(neuron_go_dir, "GO_enrichment_upregulated.csv")
+neuron_go_down_file <- file.path(neuron_go_dir, "GO_enrichment_downregulated.csv")
 
-    # Create full comparative plot with ontology labels
-    cat("\nCreating full GO comparative plot...\n")
-    create_comparative_dotplot(
-        go_data,
-        title = "GO Enrichment: Upregulated vs Downregulated",
-        output_file = file.path(output_dir, "GO_comparative_full.png"),
-        show_ontology = TRUE
+# If neuron GO files don't exist, create them from the neuron DEG files
+if (!file.exists(neuron_go_up_file) || !file.exists(neuron_go_down_file)) {
+    cat("\nNeuron GO enrichment files not found. Creating them from DEG files...\n")
+
+    suppressPackageStartupMessages({
+        library(clusterProfiler)
+        library(org.Hs.eg.db)
+    })
+
+    # Load neuron up/downregulated gene lists
+    neuron_up_deg_file <- file.path(neuron_deg_dir, "Neuron_differential_expression_upregulated.csv")
+    neuron_down_deg_file <- file.path(neuron_deg_dir, "Neuron_differential_expression_downregulated.csv")
+
+    # Process upregulated genes
+    if (file.exists(neuron_up_deg_file)) {
+        neuron_up_genes <- read.csv(neuron_up_deg_file) %>%
+            pull(gene_symbol) %>%
+            unique() %>%
+            na.omit()
+
+        cat("  Neuron upregulated genes:", length(neuron_up_genes), "\n")
+
+        if (length(neuron_up_genes) > 0) {
+            # Convert to Entrez IDs
+            neuron_up_entrez <- bitr(neuron_up_genes, fromType = "SYMBOL", toType = "ENTREZID",
+                                    OrgDb = org.Hs.eg.db, drop = TRUE)
+
+            # Run GO enrichment
+            go_neuron_up <- enrichGO(
+                gene = neuron_up_entrez$ENTREZID,
+                OrgDb = org.Hs.eg.db,
+                ont = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff = 0.05,
+                qvalueCutoff = 0.2,
+                readable = TRUE
+            )
+
+            if (!is.null(go_neuron_up) && nrow(go_neuron_up) > 0) {
+                write.csv(as.data.frame(go_neuron_up), neuron_go_up_file, row.names = FALSE)
+                cat("  Created:", neuron_go_up_file, "\n")
+            } else {
+                neuron_go_up_file <- NULL
+            }
+        } else {
+            neuron_go_up_file <- NULL
+        }
+    } else {
+        cat("  Warning: Neuron upregulated DEG file not found\n")
+        neuron_go_up_file <- NULL
+    }
+
+    # Process downregulated genes
+    if (file.exists(neuron_down_deg_file)) {
+        neuron_down_genes <- read.csv(neuron_down_deg_file) %>%
+            pull(gene_symbol) %>%
+            unique() %>%
+            na.omit()
+
+        cat("  Neuron downregulated genes:", length(neuron_down_genes), "\n")
+
+        if (length(neuron_down_genes) > 0) {
+            # Convert to Entrez IDs
+            neuron_down_entrez <- bitr(neuron_down_genes, fromType = "SYMBOL", toType = "ENTREZID",
+                                      OrgDb = org.Hs.eg.db, drop = TRUE)
+
+            # Run GO enrichment
+            go_neuron_down <- enrichGO(
+                gene = neuron_down_entrez$ENTREZID,
+                OrgDb = org.Hs.eg.db,
+                ont = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff = 0.05,
+                qvalueCutoff = 0.2,
+                readable = TRUE
+            )
+
+            if (!is.null(go_neuron_down) && nrow(go_neuron_down) > 0) {
+                write.csv(as.data.frame(go_neuron_down), neuron_go_down_file, row.names = FALSE)
+                cat("  Created:", neuron_go_down_file, "\n")
+            } else {
+                neuron_go_down_file <- NULL
+            }
+        } else {
+            neuron_go_down_file <- NULL
+        }
+    } else {
+        cat("  Warning: Neuron downregulated DEG file not found\n")
+        neuron_go_down_file <- NULL
+    }
+}
+
+# Check if we have the required files
+if ((file.exists(npc_go_up_file) || file.exists(npc_go_down_file)) &&
+    (!is.null(neuron_go_up_file) && !is.null(neuron_go_down_file))) {
+
+    # Prepare combined data
+    go_data <- prepare_combined_celltype_data(
+        npc_up_file = npc_go_up_file,
+        npc_down_file = npc_go_down_file,
+        neuron_up_file = neuron_go_up_file,
+        neuron_down_file = neuron_go_down_file,
+        type = "GO"
     )
 
-    # Create simplified plot (top terms, simplified labels)
-    cat("\nCreating simplified GO comparative plot...\n")
-
-    # Select top terms by p-value from each direction
-    top_go_up <- go_data %>%
-        filter(Direction == "UP", !is.na(p.adjust)) %>%
-        arrange(p.adjust) %>%
-        head(15) %>%
-        pull(Term)
-
-    top_go_down <- go_data %>%
-        filter(Direction == "Down", !is.na(p.adjust)) %>%
-        arrange(p.adjust) %>%
-        head(15) %>%
-        pull(Term)
-
-    selected_go_terms <- unique(c(top_go_up, top_go_down))
-
-    create_simplified_comparative_plot(
+    # Create combined comparative plot
+    cat("\nCreating combined GO comparative plot (NPCs and Neurons)...\n")
+    create_combined_dotplot(
         go_data,
-        title = "GO Enrichment: Mutant vs Control",
-        output_file = file.path(output_dir, "GO_comparative_simplified.png"),
-        selected_terms = selected_go_terms
+        title = "GO Enrichment: NPCs and Neurons",
+        output_file = file.path(output_dir, "GO_comparative_NPCs_Neurons.png")
     )
 
 } else {
-    cat("GO enrichment files not found. Skipping GO comparative plots.\n")
+    cat("Required GO enrichment files not found. Skipping GO comparative plots.\n")
+    if (!file.exists(npc_go_up_file)) cat("  Missing:", npc_go_up_file, "\n")
+    if (!file.exists(npc_go_down_file)) cat("  Missing:", npc_go_down_file, "\n")
+    if (is.null(neuron_go_up_file)) {
+        cat("  Missing: Neuron upregulated GO file\n")
+    } else if (!file.exists(neuron_go_up_file)) {
+        cat("  Missing:", neuron_go_up_file, "\n")
+    }
+    if (is.null(neuron_go_down_file)) {
+        cat("  Missing: Neuron downregulated GO file\n")
+    } else if (!file.exists(neuron_go_down_file)) {
+        cat("  Missing:", neuron_go_down_file, "\n")
+    }
 }
 
 # ============================================================
-# Process KEGG enrichment
+# Process KEGG enrichment for NPCs and Neurons
 # ============================================================
 cat("\n============================================================\n")
 cat("Processing KEGG Enrichment Results\n")
 cat("============================================================\n")
 
-kegg_up_file <- file.path(input_dir, "KEGG_enrichment_upregulated.csv")
-kegg_down_file <- file.path(input_dir, "KEGG_enrichment_downregulated.csv")
+# NPC KEGG enrichment files (current analysis)
+npc_kegg_up_file <- file.path(npc_input_dir, "KEGG_enrichment_upregulated.csv")
+npc_kegg_down_file <- file.path(npc_input_dir, "KEGG_enrichment_downregulated.csv")
 
-if (file.exists(kegg_up_file) || file.exists(kegg_down_file)) {
-    kegg_data <- prepare_comparative_data(kegg_up_file, kegg_down_file, type = "KEGG")
+# Neuron KEGG enrichment files
+neuron_kegg_up_file <- file.path(neuron_go_dir, "KEGG_enrichment_upregulated.csv")
+neuron_kegg_down_file <- file.path(neuron_go_dir, "KEGG_enrichment_downregulated.csv")
 
-    # For KEGG, use Description as Term
-    if ("Description" %in% colnames(read.csv(kegg_up_file))) {
-        # Re-read and process KEGG data
-        combined_kegg <- data.frame()
+# If neuron KEGG files don't exist, try alternative locations
+if (!file.exists(neuron_kegg_up_file) || !file.exists(neuron_kegg_down_file)) {
+    cat("\nNeuron KEGG enrichment files not found in expected location.\n")
+    cat("Skipping KEGG comparative plots (neuron data not available).\n")
+    neuron_kegg_up_file <- NULL
+    neuron_kegg_down_file <- NULL
+}
 
-        if (file.exists(kegg_up_file)) {
-            kegg_up <- read.csv(kegg_up_file) %>%
-                filter(Count >= min_count, p.adjust <= max_pval) %>%
-                arrange(p.adjust) %>%
-                head(top_n_terms) %>%
-                mutate(
-                    Direction = "UP",
-                    Term = Description
-                ) %>%
-                select(Term, Count, p.adjust, Direction)
-            combined_kegg <- bind_rows(combined_kegg, kegg_up)
-        }
+# Check if we have the required files
+if ((file.exists(npc_kegg_up_file) || file.exists(npc_kegg_down_file)) &&
+    (!is.null(neuron_kegg_up_file) && !is.null(neuron_kegg_down_file))) {
 
-        if (file.exists(kegg_down_file)) {
-            kegg_down <- read.csv(kegg_down_file) %>%
-                filter(Count >= min_count, p.adjust <= max_pval) %>%
-                arrange(p.adjust) %>%
-                head(top_n_terms) %>%
-                mutate(
-                    Direction = "Down",
-                    Term = Description
-                ) %>%
-                select(Term, Count, p.adjust, Direction)
-            combined_kegg <- bind_rows(combined_kegg, kegg_down)
-        }
-
-        # Get unique terms
-        unique_kegg_terms <- unique(combined_kegg$Term)
-
-        # Create complete data frame
-        all_kegg_combinations <- expand.grid(
-            Term = unique_kegg_terms,
-            Direction = c("UP", "Down"),
-            stringsAsFactors = FALSE
-        )
-
-        kegg_data <- all_kegg_combinations %>%
-            left_join(combined_kegg, by = c("Term", "Direction"))
-    }
-
-    # Create KEGG comparative plots
-    cat("\nCreating KEGG comparative plot...\n")
-    create_comparative_dotplot(
-        kegg_data,
-        title = "KEGG Pathway Enrichment: Upregulated vs Downregulated",
-        output_file = file.path(output_dir, "KEGG_comparative_full.png"),
-        show_ontology = FALSE
+    # Prepare combined data
+    kegg_data <- prepare_combined_celltype_data(
+        npc_up_file = npc_kegg_up_file,
+        npc_down_file = npc_kegg_down_file,
+        neuron_up_file = neuron_kegg_up_file,
+        neuron_down_file = neuron_kegg_down_file,
+        type = "KEGG"
     )
 
-    # Create simplified plot
-    cat("\nCreating simplified KEGG comparative plot...\n")
-
-    top_kegg_up <- kegg_data %>%
-        filter(Direction == "UP", !is.na(p.adjust)) %>%
-        arrange(p.adjust) %>%
-        head(15) %>%
-        pull(Term)
-
-    top_kegg_down <- kegg_data %>%
-        filter(Direction == "Down", !is.na(p.adjust)) %>%
-        arrange(p.adjust) %>%
-        head(15) %>%
-        pull(Term)
-
-    selected_kegg_terms <- unique(c(top_kegg_up, top_kegg_down))
-
-    create_simplified_comparative_plot(
+    # Create combined comparative plot
+    cat("\nCreating combined KEGG comparative plot (NPCs and Neurons)...\n")
+    create_combined_dotplot(
         kegg_data,
-        title = "KEGG Pathway Enrichment: Mutant vs Control",
-        output_file = file.path(output_dir, "KEGG_comparative_simplified.png"),
-        selected_terms = selected_kegg_terms
+        title = "KEGG Pathway Enrichment: NPCs and Neurons",
+        output_file = file.path(output_dir, "KEGG_comparative_NPCs_Neurons.png")
     )
 
 } else {
-    cat("KEGG enrichment files not found. Skipping KEGG comparative plots.\n")
+    cat("Required KEGG enrichment files not found. Skipping KEGG comparative plots.\n")
 }
 
 cat("\n==========================================\n")
 cat("Comparative enrichment plots complete!\n")
 cat("Output files saved to:", output_dir, "\n")
 cat("\nGenerated plots:\n")
-cat("  - GO_comparative_full.png: Full GO comparison with ontology labels\n")
-cat("  - GO_comparative_simplified.png: Simplified GO comparison (top terms)\n")
-cat("  - KEGG_comparative_full.png: Full KEGG pathway comparison\n")
-cat("  - KEGG_comparative_simplified.png: Simplified KEGG comparison (top terms)\n")
+cat("  - GO_comparative_NPCs_Neurons.png: Combined GO comparison for NPCs and Neurons\n")
+cat("  - KEGG_comparative_NPCs_Neurons.png: Combined KEGG comparison for NPCs and Neurons\n")
 cat("\nAll plots saved in both PNG and PDF formats\n")
 cat("End time:", as.character(Sys.time()), "\n")
 cat("==========================================\n")

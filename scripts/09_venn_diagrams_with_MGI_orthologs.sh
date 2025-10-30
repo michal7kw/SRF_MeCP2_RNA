@@ -11,7 +11,7 @@
 # This script runs the R script to create all plots
 
 source /opt/common/tools/ric.cosr/miniconda3/bin/activate
-conda activate r-data-vis
+conda activate r-plotting
 
 set -e  # Exit on error
 set -u  # Exit on undefined variable

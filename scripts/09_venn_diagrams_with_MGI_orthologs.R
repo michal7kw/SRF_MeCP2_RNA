@@ -6,8 +6,10 @@
 
 suppressPackageStartupMessages({
     library(tidyverse)
-    library(VennDiagram)
+    library(ggVennDiagram)
     library(RColorBrewer)
+    library(gridExtra)
+    library(grid)
 })
 
 cat("==========================================\n")
@@ -26,7 +28,7 @@ MOUSE_NEURON_FILE <- "/beegfs/scratch/ric.broccoli/kubacki.michal/SRF_MeCP2_top/
 MOUSE_NPC_FILE <- "/beegfs/scratch/ric.broccoli/kubacki.michal/SRF_MeCP2_top/SRF_MeCP2_CUTandTAG/DATA/DEA_NSC.csv"
 
 # MGI ortholog database
-MGI_ORTHOLOG_FILE <- "results/venn_diagrams/ortholog_db/HOM_MouseHumanSequence.rpt"
+MGI_ORTHOLOG_FILE <- "results/venn_diagrams_MGI/ortholog_db/HOM_MouseHumanSequence.rpt"
 
 # Output directory
 OUTPUT_DIR <- "results/venn_diagrams_MGI"
@@ -109,9 +111,10 @@ convert_mouse_to_human_mgi <- function(mouse_genes, mgi_orthologs) {
 # ============================================================
 # Function: Load and filter human genes
 # ============================================================
-load_human_genes <- function(file_path, source_name, prefiltered = FALSE) {
+load_human_genes <- function(file_path, source_name, prefiltered = FALSE, direction = "up") {
     cat("\nLoading", source_name, "data...\n")
     cat("  File:", file_path, "\n")
+    cat("  Direction:", direction, "\n")
 
     if (!file.exists(file_path)) {
         stop("File not found: ", file_path)
@@ -124,10 +127,19 @@ load_human_genes <- function(file_path, source_name, prefiltered = FALSE) {
         genes <- data$gene_symbol
         cat("  Pre-filtered file - using all", length(genes), "genes\n")
     } else {
-        genes <- data %>%
-            filter(log2FoldChange > LOG2FC_THRESHOLD, padj < PADJ_THRESHOLD) %>%
-            pull(gene_symbol)
-        cat("  Filtered to", length(genes), "upregulated genes (log2FC >", LOG2FC_THRESHOLD, ", padj <", PADJ_THRESHOLD, ")\n")
+        if (direction == "up") {
+            genes <- data %>%
+                filter(log2FoldChange > LOG2FC_THRESHOLD, padj < PADJ_THRESHOLD) %>%
+                pull(gene_symbol)
+            cat("  Filtered to", length(genes), "upregulated genes (log2FC >", LOG2FC_THRESHOLD, ", padj <", PADJ_THRESHOLD, ")\n")
+        } else if (direction == "down") {
+            genes <- data %>%
+                filter(log2FoldChange < -LOG2FC_THRESHOLD, padj < PADJ_THRESHOLD) %>%
+                pull(gene_symbol)
+            cat("  Filtered to", length(genes), "downregulated genes (log2FC < -", LOG2FC_THRESHOLD, ", padj <", PADJ_THRESHOLD, ")\n")
+        } else {
+            stop("Invalid direction: ", direction, ". Must be 'up' or 'down'")
+        }
     }
 
     genes <- genes[!is.na(genes) & genes != ""]
@@ -139,9 +151,10 @@ load_human_genes <- function(file_path, source_name, prefiltered = FALSE) {
 # ============================================================
 # Function: Load and filter mouse genes, convert to human
 # ============================================================
-load_mouse_genes_mgi <- function(file_path, source_name, mgi_orthologs) {
+load_mouse_genes_mgi <- function(file_path, source_name, mgi_orthologs, direction = "up") {
     cat("\nLoading", source_name, "data...\n")
     cat("  File:", file_path, "\n")
+    cat("  Direction:", direction, "\n")
 
     if (!file.exists(file_path)) {
         stop("File not found: ", file_path)
@@ -150,12 +163,20 @@ load_mouse_genes_mgi <- function(file_path, source_name, mgi_orthologs) {
     data <- read.csv(file_path, stringsAsFactors = FALSE)
     cat("  Loaded", nrow(data), "total genes\n")
 
-    # Filter for upregulated genes
-    filtered_data <- data %>%
-        filter(!is.na(log2FoldChange), !is.na(padj)) %>%
-        filter(log2FoldChange > LOG2FC_THRESHOLD, padj < PADJ_THRESHOLD)
-
-    cat("  Filtered to", nrow(filtered_data), "upregulated genes (log2FC >", LOG2FC_THRESHOLD, ", padj <", PADJ_THRESHOLD, ")\n")
+    # Filter for up/downregulated genes
+    if (direction == "up") {
+        filtered_data <- data %>%
+            filter(!is.na(log2FoldChange), !is.na(padj)) %>%
+            filter(log2FoldChange > LOG2FC_THRESHOLD, padj < PADJ_THRESHOLD)
+        cat("  Filtered to", nrow(filtered_data), "upregulated genes (log2FC >", LOG2FC_THRESHOLD, ", padj <", PADJ_THRESHOLD, ")\n")
+    } else if (direction == "down") {
+        filtered_data <- data %>%
+            filter(!is.na(log2FoldChange), !is.na(padj)) %>%
+            filter(log2FoldChange < -LOG2FC_THRESHOLD, padj < PADJ_THRESHOLD)
+        cat("  Filtered to", nrow(filtered_data), "downregulated genes (log2FC < -", LOG2FC_THRESHOLD, ", padj <", PADJ_THRESHOLD, ")\n")
+    } else {
+        stop("Invalid direction: ", direction, ". Must be 'up' or 'down'")
+    }
 
     if (nrow(filtered_data) == 0) {
         warning("No mouse genes pass the filtering criteria!")
@@ -192,7 +213,7 @@ load_mouse_genes_mgi <- function(file_path, source_name, mgi_orthologs) {
 }
 
 # ============================================================
-# Function: Create Venn diagram
+# Function: Create Venn diagram with ggVennDiagram
 # ============================================================
 create_venn_diagram <- function(gene_list1, gene_list2,
                                 label1, label2,
@@ -229,37 +250,93 @@ create_venn_diagram <- function(gene_list1, gene_list2,
     unique2_file <- sub("\\.png$", paste0("_unique_", gsub(" ", "_", label2), ".txt"), output_file)
     writeLines(sort(unique2), unique2_file)
 
-    # Create Venn diagram
-    venn_plot <- venn.diagram(
-        x = list(gene_list1, gene_list2),
-        category.names = c(label1, label2),
-        filename = NULL,
-        output = TRUE,
-        fill = c("#e74c3c", "#3498db"),
-        alpha = 0.5,
-        cex = 1.5,
-        fontfamily = "sans",
-        cat.cex = 1.3,
-        cat.fontface = "bold",
-        cat.default.pos = "outer",
-        cat.fontfamily = "sans",
-        main = title,
-        main.cex = 1.5,
-        main.fontface = "bold",
-        main.fontfamily = "sans",
-        margin = 0.1
+    # Prepare data for ggVennDiagram
+    venn_list <- list(gene_list1, gene_list2)
+    names(venn_list) <- c(label1, label2)
+
+    # Create Venn diagram with ggVennDiagram
+    venn_plot <- ggVennDiagram(
+        venn_list,
+        label = "count",
+        label_alpha = 0,
+        label_size = 5,
+        edge_size = 1.5
+    ) +
+        scale_fill_gradient(low = "#F4FAFE", high = "#4981BF") +
+        scale_color_manual(values = c("#E74C3C", "#3498DB")) +
+        labs(title = title) +
+        theme(
+            plot.title = element_text(hjust = 0.5, size = 16, face = "bold", margin = margin(b = 20)),
+            plot.margin = margin(t = 20, r = 20, b = 80, l = 20),
+            legend.position = "none"
+        )
+
+    # Create statistics table
+    stats_df <- data.frame(
+        Metric = c(
+            paste(label1, "total"),
+            paste(label2, "total"),
+            "Overlap",
+            paste("Unique to", label1),
+            paste("Unique to", label2),
+            paste("Overlap % of", label1),
+            paste("Overlap % of", label2)
+        ),
+        Value = c(
+            length(gene_list1),
+            length(gene_list2),
+            length(overlap),
+            length(unique1),
+            length(unique2),
+            sprintf("%.1f%%", overlap_pct1),
+            sprintf("%.1f%%", overlap_pct2)
+        )
     )
 
-    # Save plots
-    png(output_file, width = 2400, height = 2400, res = 300)
-    grid.draw(venn_plot)
-    dev.off()
+    # Create table grob
+    stats_table <- tableGrob(
+        stats_df,
+        rows = NULL,
+        theme = ttheme_minimal(
+            core = list(
+                fg_params = list(hjust = 0, x = 0.1, fontsize = 10),
+                bg_params = list(fill = c("#F0F0F0", "#FFFFFF"))
+            ),
+            colhead = list(
+                fg_params = list(fontface = "bold", fontsize = 11),
+                bg_params = list(fill = "#4981BF", col = "white")
+            )
+        )
+    )
+
+    # Combine plot and table
+    combined_plot <- grid.arrange(
+        venn_plot,
+        stats_table,
+        ncol = 1,
+        heights = c(0.7, 0.3)
+    )
+
+    # Save PNG
+    ggsave(
+        output_file,
+        plot = combined_plot,
+        width = 10,
+        height = 12,
+        dpi = 300,
+        bg = "white"
+    )
     cat("  Saved PNG:", output_file, "\n")
 
+    # Save PDF
     pdf_file <- sub("\\.png$", ".pdf", output_file)
-    pdf(pdf_file, width = 8, height = 8)
-    grid.draw(venn_plot)
-    dev.off()
+    ggsave(
+        pdf_file,
+        plot = combined_plot,
+        width = 10,
+        height = 12,
+        bg = "white"
+    )
     cat("  Saved PDF:", pdf_file, "\n")
 
     return(list(
@@ -283,59 +360,141 @@ cat("============================================================\n")
 mgi_orthologs <- load_mgi_orthologs()
 
 cat("\n============================================================\n")
-cat("STEP 2: Loading Human Gene Data\n")
+cat("STEP 2: Loading Human Gene Data - UPREGULATED\n")
 cat("============================================================\n")
 
-human_neuron_genes <- load_human_genes(
+human_neuron_genes_up <- load_human_genes(
     HUMAN_NEURON_FILE,
     "Human Neurons",
-    prefiltered = TRUE
+    prefiltered = TRUE,
+    direction = "up"
 )
 
-human_npc_genes <- load_human_genes(
+human_npc_genes_up <- load_human_genes(
     HUMAN_NPC_FILE,
     "Human NPCs",
-    prefiltered = FALSE
+    prefiltered = FALSE,
+    direction = "up"
 )
 
 cat("\n============================================================\n")
-cat("STEP 3: Loading Mouse Data and Converting with MGI Orthologs\n")
+cat("STEP 2b: Loading Human Gene Data - DOWNREGULATED\n")
 cat("============================================================\n")
 
-mouse_neuron_result <- load_mouse_genes_mgi(
+# Note: The pre-filtered neuron file only contains upregulated genes
+# We need to load the raw data for downregulated genes
+# Check if a downregulated file exists, otherwise we'll need the raw data
+human_neuron_genes_down <- tryCatch({
+    load_human_genes(
+        "/beegfs/scratch/ric.broccoli/kubacki.michal/SRF_MeCP2_top/SRF_MeCP2_rna_old/results/05_deseq2/Neuron_differential_expression_downregulated.csv",
+        "Human Neurons",
+        prefiltered = TRUE,
+        direction = "down"
+    )
+}, error = function(e) {
+    cat("  No pre-filtered downregulated file found for neurons. Trying raw data...\n")
+    tryCatch({
+        load_human_genes(
+            "/beegfs/scratch/ric.broccoli/kubacki.michal/SRF_MeCP2_top/SRF_MeCP2_rna_old/results/05_deseq2/Neuron_differential_expression.csv",
+            "Human Neurons",
+            prefiltered = FALSE,
+            direction = "down"
+        )
+    }, error = function(e2) {
+        cat("  WARNING: Could not load downregulated neuron genes:", conditionMessage(e2), "\n")
+        return(character())
+    })
+})
+
+human_npc_genes_down <- load_human_genes(
+    HUMAN_NPC_FILE,
+    "Human NPCs",
+    prefiltered = FALSE,
+    direction = "down"
+)
+
+cat("\n============================================================\n")
+cat("STEP 3: Loading Mouse Data and Converting with MGI Orthologs - UPREGULATED\n")
+cat("============================================================\n")
+
+mouse_neuron_result_up <- load_mouse_genes_mgi(
     MOUSE_NEURON_FILE,
     "Mouse Neurons",
-    mgi_orthologs
+    mgi_orthologs,
+    direction = "up"
 )
 
-mouse_npc_result <- load_mouse_genes_mgi(
+mouse_npc_result_up <- load_mouse_genes_mgi(
     MOUSE_NPC_FILE,
     "Mouse NPCs",
-    mgi_orthologs
+    mgi_orthologs,
+    direction = "up"
 )
 
 cat("\n============================================================\n")
-cat("STEP 4: Creating Venn Diagrams\n")
+cat("STEP 3b: Loading Mouse Data and Converting with MGI Orthologs - DOWNREGULATED\n")
 cat("============================================================\n")
 
-# Venn diagram 1: Neurons
-neuron_stats <- create_venn_diagram(
-    gene_list1 = human_neuron_genes,
-    gene_list2 = mouse_neuron_result$human_genes,
+mouse_neuron_result_down <- load_mouse_genes_mgi(
+    MOUSE_NEURON_FILE,
+    "Mouse Neurons",
+    mgi_orthologs,
+    direction = "down"
+)
+
+mouse_npc_result_down <- load_mouse_genes_mgi(
+    MOUSE_NPC_FILE,
+    "Mouse NPCs",
+    mgi_orthologs,
+    direction = "down"
+)
+
+cat("\n============================================================\n")
+cat("STEP 4: Creating Venn Diagrams - UPREGULATED GENES\n")
+cat("============================================================\n")
+
+# Venn diagram 1: Neurons - Upregulated
+neuron_stats_up <- create_venn_diagram(
+    gene_list1 = human_neuron_genes_up,
+    gene_list2 = mouse_neuron_result_up$human_genes,
     label1 = "Human Neurons",
     label2 = "Mouse Neurons",
-    output_file = file.path(OUTPUT_DIR, "venn_neurons_human_vs_mouse_MGI.png"),
+    output_file = file.path(OUTPUT_DIR, "venn_neurons_human_vs_mouse_MGI_upregulated.png"),
     title = "Upregulated Genes: Human vs Mouse Neurons\n(MGI Orthologs, log2FC > 0.5, padj < 0.05)"
 )
 
-# Venn diagram 2: NPCs
-npc_stats <- create_venn_diagram(
-    gene_list1 = human_npc_genes,
-    gene_list2 = mouse_npc_result$human_genes,
+# Venn diagram 2: NPCs - Upregulated
+npc_stats_up <- create_venn_diagram(
+    gene_list1 = human_npc_genes_up,
+    gene_list2 = mouse_npc_result_up$human_genes,
     label1 = "Human NPCs",
     label2 = "Mouse NPCs",
-    output_file = file.path(OUTPUT_DIR, "venn_npcs_human_vs_mouse_MGI.png"),
+    output_file = file.path(OUTPUT_DIR, "venn_npcs_human_vs_mouse_MGI_upregulated.png"),
     title = "Upregulated Genes: Human vs Mouse NPCs\n(MGI Orthologs, log2FC > 0.5, padj < 0.05)"
+)
+
+cat("\n============================================================\n")
+cat("STEP 4b: Creating Venn Diagrams - DOWNREGULATED GENES\n")
+cat("============================================================\n")
+
+# Venn diagram 3: Neurons - Downregulated
+neuron_stats_down <- create_venn_diagram(
+    gene_list1 = human_neuron_genes_down,
+    gene_list2 = mouse_neuron_result_down$human_genes,
+    label1 = "Human Neurons",
+    label2 = "Mouse Neurons",
+    output_file = file.path(OUTPUT_DIR, "venn_neurons_human_vs_mouse_MGI_downregulated.png"),
+    title = "Downregulated Genes: Human vs Mouse Neurons\n(MGI Orthologs, log2FC < -0.5, padj < 0.05)"
+)
+
+# Venn diagram 4: NPCs - Downregulated
+npc_stats_down <- create_venn_diagram(
+    gene_list1 = human_npc_genes_down,
+    gene_list2 = mouse_npc_result_down$human_genes,
+    label1 = "Human NPCs",
+    label2 = "Mouse NPCs",
+    output_file = file.path(OUTPUT_DIR, "venn_npcs_human_vs_mouse_MGI_downregulated.png"),
+    title = "Downregulated Genes: Human vs Mouse NPCs\n(MGI Orthologs, log2FC < -0.5, padj < 0.05)"
 )
 
 # ============================================================
@@ -346,23 +505,47 @@ cat("\n============================================================\n")
 cat("SUMMARY REPORT (Using MGI Orthologs)\n")
 cat("============================================================\n\n")
 
+cat("UPREGULATED GENES\n")
+cat("=================\n\n")
+
 cat("NEURONS:\n")
-cat("  Human:", neuron_stats$total1, "upregulated genes\n")
-cat("  Mouse:", neuron_stats$total2, "upregulated genes (MGI orthologs)\n")
-cat("  Overlap:", neuron_stats$overlap, "genes (",
-    sprintf("%.1f%%", neuron_stats$overlap / min(neuron_stats$total1, neuron_stats$total2) * 100),
+cat("  Human:", neuron_stats_up$total1, "upregulated genes\n")
+cat("  Mouse:", neuron_stats_up$total2, "upregulated genes (MGI orthologs)\n")
+cat("  Overlap:", neuron_stats_up$overlap, "genes (",
+    sprintf("%.1f%%", neuron_stats_up$overlap / min(neuron_stats_up$total1, neuron_stats_up$total2) * 100),
     "of smaller set)\n")
-cat("  Unique to Human:", neuron_stats$unique1, "genes\n")
-cat("  Unique to Mouse:", neuron_stats$unique2, "genes\n\n")
+cat("  Unique to Human:", neuron_stats_up$unique1, "genes\n")
+cat("  Unique to Mouse:", neuron_stats_up$unique2, "genes\n\n")
 
 cat("NPCs:\n")
-cat("  Human:", npc_stats$total1, "upregulated genes\n")
-cat("  Mouse:", npc_stats$total2, "upregulated genes (MGI orthologs)\n")
-cat("  Overlap:", npc_stats$overlap, "genes (",
-    sprintf("%.1f%%", npc_stats$overlap / min(npc_stats$total1, npc_stats$total2) * 100),
+cat("  Human:", npc_stats_up$total1, "upregulated genes\n")
+cat("  Mouse:", npc_stats_up$total2, "upregulated genes (MGI orthologs)\n")
+cat("  Overlap:", npc_stats_up$overlap, "genes (",
+    sprintf("%.1f%%", npc_stats_up$overlap / min(npc_stats_up$total1, npc_stats_up$total2) * 100),
     "of smaller set)\n")
-cat("  Unique to Human:", npc_stats$unique1, "genes\n")
-cat("  Unique to Mouse:", npc_stats$unique2, "genes\n\n")
+cat("  Unique to Human:", npc_stats_up$unique1, "genes\n")
+cat("  Unique to Mouse:", npc_stats_up$unique2, "genes\n\n")
+
+cat("DOWNREGULATED GENES\n")
+cat("===================\n\n")
+
+cat("NEURONS:\n")
+cat("  Human:", neuron_stats_down$total1, "downregulated genes\n")
+cat("  Mouse:", neuron_stats_down$total2, "downregulated genes (MGI orthologs)\n")
+cat("  Overlap:", neuron_stats_down$overlap, "genes (",
+    sprintf("%.1f%%", neuron_stats_down$overlap / min(neuron_stats_down$total1, neuron_stats_down$total2) * 100),
+    "of smaller set)\n")
+cat("  Unique to Human:", neuron_stats_down$unique1, "genes\n")
+cat("  Unique to Mouse:", neuron_stats_down$unique2, "genes\n\n")
+
+cat("NPCs:\n")
+cat("  Human:", npc_stats_down$total1, "downregulated genes\n")
+cat("  Mouse:", npc_stats_down$total2, "downregulated genes (MGI orthologs)\n")
+cat("  Overlap:", npc_stats_down$overlap, "genes (",
+    sprintf("%.1f%%", npc_stats_down$overlap / min(npc_stats_down$total1, npc_stats_down$total2) * 100),
+    "of smaller set)\n")
+cat("  Unique to Human:", npc_stats_down$unique1, "genes\n")
+cat("  Unique to Mouse:", npc_stats_down$unique2, "genes\n\n")
 
 # Save summary
 summary_file <- file.path(OUTPUT_DIR, "venn_summary_MGI_orthologs.txt")
@@ -371,22 +554,52 @@ cat("VENN DIAGRAM ANALYSIS - MGI ORTHOLOGS\n")
 cat("Generated:", as.character(Sys.time()), "\n")
 cat("==========================================\n\n")
 cat("FILTERING CRITERIA:\n")
-cat("  log2FoldChange >", LOG2FC_THRESHOLD, "\n")
-cat("  padj <", PADJ_THRESHOLD, "\n")
+cat("  Upregulated: log2FoldChange >", LOG2FC_THRESHOLD, ", padj <", PADJ_THRESHOLD, "\n")
+cat("  Downregulated: log2FoldChange < -", LOG2FC_THRESHOLD, ", padj <", PADJ_THRESHOLD, "\n")
 cat("  Ortholog database: MGI (Mouse Genome Informatics)\n\n")
+
+cat("===============================\n")
+cat("UPREGULATED GENES\n")
+cat("===============================\n\n")
+
 cat("NEURONS:\n")
-cat("  Human:", neuron_stats$total1, "\n")
-cat("  Mouse:", neuron_stats$total2, "(MGI orthologs)\n")
-cat("  Overlap:", neuron_stats$overlap, sprintf("(%.1f%%)\n", neuron_stats$overlap / min(neuron_stats$total1, neuron_stats$total2) * 100))
-cat("  Overlapping genes:\n    ", paste(neuron_stats$overlap_genes, collapse = ", "), "\n\n")
+cat("  Human:", neuron_stats_up$total1, "\n")
+cat("  Mouse:", neuron_stats_up$total2, "(MGI orthologs)\n")
+cat("  Overlap:", neuron_stats_up$overlap, sprintf("(%.1f%%)\n", neuron_stats_up$overlap / min(neuron_stats_up$total1, neuron_stats_up$total2) * 100))
+if (length(neuron_stats_up$overlap_genes) > 0) {
+    cat("  Overlapping genes:\n    ", paste(neuron_stats_up$overlap_genes, collapse = ", "), "\n\n")
+}
+
 cat("NPCs:\n")
-cat("  Human:", npc_stats$total1, "\n")
-cat("  Mouse:", npc_stats$total2, "(MGI orthologs)\n")
-cat("  Overlap:", npc_stats$overlap, sprintf("(%.1f%%)\n", npc_stats$overlap / min(npc_stats$total1, npc_stats$total2) * 100))
-if (length(npc_stats$overlap_genes) <= 100) {
-    cat("  Overlapping genes:\n    ", paste(npc_stats$overlap_genes, collapse = ", "), "\n\n")
+cat("  Human:", npc_stats_up$total1, "\n")
+cat("  Mouse:", npc_stats_up$total2, "(MGI orthologs)\n")
+cat("  Overlap:", npc_stats_up$overlap, sprintf("(%.1f%%)\n", npc_stats_up$overlap / min(npc_stats_up$total1, npc_stats_up$total2) * 100))
+if (length(npc_stats_up$overlap_genes) <= 100) {
+    cat("  Overlapping genes:\n    ", paste(npc_stats_up$overlap_genes, collapse = ", "), "\n\n")
 } else {
-    cat("  Overlapping genes (first 100):\n    ", paste(head(npc_stats$overlap_genes, 100), collapse = ", "), "\n\n")
+    cat("  Overlapping genes (first 100):\n    ", paste(head(npc_stats_up$overlap_genes, 100), collapse = ", "), "\n\n")
+}
+
+cat("\n===============================\n")
+cat("DOWNREGULATED GENES\n")
+cat("===============================\n\n")
+
+cat("NEURONS:\n")
+cat("  Human:", neuron_stats_down$total1, "\n")
+cat("  Mouse:", neuron_stats_down$total2, "(MGI orthologs)\n")
+cat("  Overlap:", neuron_stats_down$overlap, sprintf("(%.1f%%)\n", neuron_stats_down$overlap / min(neuron_stats_down$total1, neuron_stats_down$total2) * 100))
+if (length(neuron_stats_down$overlap_genes) > 0) {
+    cat("  Overlapping genes:\n    ", paste(neuron_stats_down$overlap_genes, collapse = ", "), "\n\n")
+}
+
+cat("NPCs:\n")
+cat("  Human:", npc_stats_down$total1, "\n")
+cat("  Mouse:", npc_stats_down$total2, "(MGI orthologs)\n")
+cat("  Overlap:", npc_stats_down$overlap, sprintf("(%.1f%%)\n", npc_stats_down$overlap / min(npc_stats_down$total1, npc_stats_down$total2) * 100))
+if (length(npc_stats_down$overlap_genes) <= 100) {
+    cat("  Overlapping genes:\n    ", paste(npc_stats_down$overlap_genes, collapse = ", "), "\n\n")
+} else {
+    cat("  Overlapping genes (first 100):\n    ", paste(head(npc_stats_down$overlap_genes, 100), collapse = ", "), "\n\n")
 }
 sink()
 
@@ -396,11 +609,16 @@ cat("\n==========================================\n")
 cat("Analysis complete! (Using MGI Orthologs)\n")
 cat("Output directory:", OUTPUT_DIR, "\n\n")
 cat("Generated files:\n")
-cat("  - venn_neurons_human_vs_mouse_MGI.png/pdf\n")
-cat("  - venn_npcs_human_vs_mouse_MGI.png/pdf\n")
-cat("  - MGI_mouse_human_orthologs.csv (full MGI database)\n")
-cat("  - *_MGI_ortholog_mapping.csv (genes used in this analysis)\n")
-cat("  - *_overlap.txt, *_unique_*.txt (gene lists)\n")
-cat("  - venn_summary_MGI_orthologs.txt\n")
+cat("  UPREGULATED GENES:\n")
+cat("    - venn_neurons_human_vs_mouse_MGI_upregulated.png/pdf\n")
+cat("    - venn_npcs_human_vs_mouse_MGI_upregulated.png/pdf\n")
+cat("  DOWNREGULATED GENES:\n")
+cat("    - venn_neurons_human_vs_mouse_MGI_downregulated.png/pdf\n")
+cat("    - venn_npcs_human_vs_mouse_MGI_downregulated.png/pdf\n")
+cat("  OTHER FILES:\n")
+cat("    - MGI_mouse_human_orthologs.csv (full MGI database)\n")
+cat("    - *_MGI_ortholog_mapping.csv (genes used in this analysis)\n")
+cat("    - *_overlap.txt, *_unique_*.txt (gene lists)\n")
+cat("    - venn_summary_MGI_orthologs.txt\n")
 cat("\nEnd time:", as.character(Sys.time()), "\n")
 cat("==========================================\n")
